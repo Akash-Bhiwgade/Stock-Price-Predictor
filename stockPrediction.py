@@ -2,49 +2,32 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import style
-from nsepy import get_history
-from datetime import date
-from sklearn import svm, model_selection, neighbors
-from sklearn.ensemble import VotingClassifier, RandomForestClassifier
+from sklearn import preprocessing, model_selection
+from sklearn.linear_model import LinearRegression
+import datetime, math
+import seaborn as sns
 
-style.use('ggplot')
+data = pd.read_csv('infydata.csv')
+data['HL_PCT'] = ((data['High'] - data['Low'])/(data['Low']))*100
+data['PCT_change'] = ((data['Close'] - data['Open'])/(data['Open']))*100
 
-infydata = get_history(symbol="INFY", 
-                   start=date(2015,1,1), 
-                   end=date(2016,12,31)
-                 )
-tcsdata = get_history(symbol="TCS", 
-                   start=date(2015,1,1), 
-                   end=date(2016,12,31)
-                 )
+data = data[['Close', 'HL_PCT', 'PCT_change', 'Volume']]
 
-infydata['10ma'] = infydata['Close'].rolling(window=10).mean()
-infydata.dropna(inplace=True)
+forecast_col = 'Close'
+data.fillna(-99999, inplace=True)
+forecast_out = int(math.ceil(0.06*len(data)))
+data['label'] = data[forecast_col].shift(-forecast_out)
 
-tcsdata['10ma'] = tcsdata['Close'].rolling(window=10).mean()
-tcsdata.dropna(inplace=True)
+X = np.array(data.drop(['label'], 1))
+X = X[:-forecast_out]
+X_before = X[-forecast_out:]
+X = preprocessing.scale(X)
 
-'''df_ohlc = infydata['Close'].resample('10D').ohlc()
-df_ohlc = infydata['Volume'].resample('10D').sum()
-df_ohlc.reset_index(inplace=True)'''
+data.dropna(inplace=True)
+y = np.array(data['label'])
 
-def predict_price(X, y):
-    X_train, X_test, y_train, y_test = model_selection.train_test_split(X, y, test_size=0.25)
-    clf = VotingClassifier([
-                ('lsvc', svm.LinearSVC()),
-                ('knn', neighbors.KNeighborsClassifier()),
-                ('rfor', RandomForestClassifier())
-            ])
-    
-    clf.fit(X_train, y_train)
-    accuracy = clf.score(X_test, y_test)
-    prediction = clf.predict(X_test)
-    
-    plt.plot(y_test, prediction, color='red', label='Linear Model')
-    plt.xlabel("Date")
-    plt.ylabel("Price")
-    plt.title('Stock Market Price Prediction')
-    plt.legend()
-    plt.show()
-    
-    return accuracy, prediction
+X_train, X_test, y_train, y_test = model_selection.train_test_split(X, y, test_size=0.2)
+
+reg = LinearRegression()
+reg.fit(X_train, y_train)
+accuracy = reg.score(X_test, y_test)
